@@ -19,9 +19,9 @@ async function askGemini(userInput) {
             role: "user",
             parts: [
               {
-                text: `Kamu adalah teman yang pintar, asyik dan manusiawi. 
+                text: `Kamu adalah teman yang pintar, asyik dan informatif. 
 Jawablah seolah ngobrol santai dengan teman di live chat. 
-Gunakan bahasa ringan, sedikit bercanda, tapi tetap kasih jawaban yang benar sesuai dengan yang ditanyakan. 
+Gunakan bahasa pintar, sedikit bercanda, tapi tetap informatif. 
 Maksimal 2 kalimat, jangan terlalu panjang. 
 Input user: ${userInput}`
               }
@@ -49,7 +49,7 @@ app.get("/", async (req, res) => {
     // Kalau terlalu panjang → ringkas
     if (reply.length > 400) {
       reply = await askGemini(
-        `Ringkas jawaban berikut jadi 1-2 kalimat singkat, tetap jawab pertanyaan dan pintar:\n\n${reply}`
+        `Ringkas jawaban berikut jadi 1-3 kalimat singkat, tetap jawab pertanyaan secara informatif:\n\n${reply}`
       );
     }
 
