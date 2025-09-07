@@ -49,7 +49,7 @@ app.get("/", async (req, res) => {
     // Kalau terlalu panjang → ringkas
     if (reply.length > 400) {
       reply = await askGemini(
-        `Ringkas jawaban berikut jadi 1-3 kalimat singkat, tetap jawab pertanyaan secara informatif:\n\n${reply}`
+        `Ringkas jawaban berikut jadi 1-3 kalimat yang sesuai dengan jawaban yang diminta:\n\n${reply}`
       );
     }
 
