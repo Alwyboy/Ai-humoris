@@ -62,7 +62,7 @@ app.get("/", async (req, res) => {
       .trim();
 
     // Tambahkan sentuhan santai
-    reply = reply + " 😎";
+    reply = reply + " ";
 
     res.send(reply.substring(0, 400));
   } catch (err) {
