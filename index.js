@@ -22,7 +22,7 @@ async function askGemini(userInput) {
                 text: `Kamu adalah teman ai yang pintar. 
 Jawablah seolah ngobrol santai dengan teman di live chat. 
 Gunakan bahasa pintar, sedikit bercanda, tapi tetap informatif. 
-Maksimal 4 kalimat, jangan terlalu panjang. 
+Maksimal 2 kalimat, jangan terlalu panjang. 
 Input user: ${userInput}`
               }
             ]
@@ -49,7 +49,7 @@ app.get("/", async (req, res) => {
     // Kalau terlalu panjang → ringkas
     if (reply.length > 400) {
       reply = await askGemini(
-        `Ringkas jawaban berikut jadi 1-4 kalimat yang sesuai dengan jawaban yang diminta:\n\n${reply}`
+        `Ringkas jawaban berikut jadi 1-3 kalimat yang sesuai dengan jawaban yang diminta:\n\n${reply}`
       );
     }
 
