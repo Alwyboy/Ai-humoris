@@ -85,7 +85,7 @@ async function askGroq(userInput) {
 // ===== Nightbot Endpoint =====
 app.get("/", async (req, res) => {
   const userInput = req.query.prompt || req.query.q;
-  if (!userInput) return res.send("❌ Cara pakai: !ai <pertanyaan>");
+  if (!userInput) return res.send("katakan sesuatu setelah ketik Nightbot <pertanyaan>");
 
   try {
     let reply;
