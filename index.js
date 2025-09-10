@@ -3,10 +3,21 @@ import fetch from "node-fetch";
 
 const app = express();
 
+// Memori percakapan sementara (user → history chat)
+const conversationHistory = {};
+
 /**
  * Panggil Gemini API dengan gaya "teman humoris & pintar"
  */
-async function askGemini(userInput) {
+async function askGemini(userId, userInput) {
+  // Ambil history lama (jika ada)
+  const history = conversationHistory[userId] || [];
+
+  // Gabungkan history jadi konteks
+  const context = history
+    .map((h, i) => `${h.role === "user" ? "User" : "Bot"}: ${h.text}`)
+    .join("\n");
+
   const response = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
       process.env.GEMINI_API_KEY,
@@ -19,10 +30,13 @@ async function askGemini(userInput) {
             role: "user",
             parts: [
               {
-                text: `Kamu adalah teman yang pintar, asyik dan informatif. 
-Jawablah seolah ngobrol santai dengan teman di live chat. 
-Gunakan bahasa pintar, sedikit bercanda, tapi tetap informatif. 
-Maksimal 2 kalimat, jangan terlalu panjang. 
+                text: `Kamu adalah teman pintar, asyik, informatif. 
+Gunakan bahasa santai + sedikit bercanda, maksimal 2 kalimat. 
+Ingat percakapan sebelumnya. 
+
+History:
+${context}
+
 Input user: ${userInput}`
               }
             ]
@@ -33,36 +47,48 @@ Input user: ${userInput}`
   );
 
   const data = await response.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  // Simpan ke memori history
+  if (!conversationHistory[userId]) conversationHistory[userId] = [];
+  conversationHistory[userId].push({ role: "user", text: userInput });
+  conversationHistory[userId].push({ role: "bot", text: reply });
+
+  // Batasi history biar ga numpuk
+  if (conversationHistory[userId].length > 10) {
+    conversationHistory[userId] = conversationHistory[userId].slice(-10);
+  }
+
+  return reply;
 }
 
 /**
- * Endpoint tunggal untuk Nightbot
+ * Endpoint Nightbot
  */
 app.get("/", async (req, res) => {
   const userInput = req.query.q;
+  const userId = req.query.user || "global"; // bisa pake nama user Nightbot
+
   if (!userInput) return res.send("❌ Ketik sesuatu setelah 'Nightbot'");
 
   try {
-    let reply = await askGemini(userInput);
+    let reply = await askGemini(userId, userInput);
 
     // Kalau terlalu panjang → ringkas
     if (reply.length > 400) {
       reply = await askGemini(
-        `Ringkas jawaban berikut jadi 1-3 kalimat yang sesuai dengan jawaban yang diminta:\n\n${reply}`
+        userId,
+        `Ringkas jawaban berikut jadi 1-3 kalimat:\n\n${reply}`
       );
     }
 
-    // Bersihkan format aneh
+    // Bersihkan format
     reply = reply
       .replace(/\*\*/g, "")
       .replace(/`/g, "")
       .replace(/#+/g, "")
       .replace(/\n+/g, " ")
       .trim();
-
-    // Tambahkan sentuhan santai
-    reply = reply + " ";
 
     res.send(reply.substring(0, 400));
   } catch (err) {
