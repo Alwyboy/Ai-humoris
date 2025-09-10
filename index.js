@@ -30,8 +30,8 @@ async function askGemini(userId, userInput) {
             role: "user",
             parts: [
               {
-                text: `Kamu adalah teman pintar, asyik, informatif. 
-Gunakan bahasa santai + sedikit bercanda, maksimal 2 kalimat. 
+                text: `Kamu adalah teman ai yang pintar. 
+Gunakan bahasa santai + sedikit bercanda, maksimal 4 kalimat. 
 Ingat percakapan sebelumnya. 
 
 History:
