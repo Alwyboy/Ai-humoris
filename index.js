@@ -3,100 +3,74 @@ import fetch from "node-fetch";
 
 const app = express();
 
-// Memori percakapan sementara (user → history chat)
-const conversationHistory = {};
-
 /**
- * Panggil Gemini API dengan gaya "teman humoris & pintar"
- */
-async function askGemini(userId, userInput) {
-  // Ambil history lama (jika ada)
-  const history = conversationHistory[userId] || [];
-
-  // Gabungkan history jadi konteks
-  const context = history
-    .map((h, i) => `${h.role === "user" ? "User" : "Bot"}: ${h.text}`)
-    .join("\n");
-
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
-      process.env.GEMINI_API_KEY,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `Kamu adalah teman ai yang pintar. 
-Gunakan bahasa santai + sedikit bercanda, maksimal 4 kalimat. 
-Ingat percakapan sebelumnya. 
-
-History:
-${context}
-
+ * Panggil Gemini API dengan gaya "teman humoris & pintar"
+ */
+async function askGemini(userInput) {
+  const response = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
+      process.env.GEMINI_API_KEY,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `Kamu adalah teman ai yang pintar. 
+Jawablah seolah ngobrol santai dengan teman di live chat. 
+Gunakan bahasa pintar, sedikit bercanda, tapi tetap informatif. 
+Maksimal 4 kalimat, jangan terlalu panjang. 
 Input user: ${userInput}`
-              }
-            ]
-          }
-        ]
-      })
-    }
-  );
+              }
+            ]
+          }
+        ]
+      })
+    }
+  );
 
-  const data = await response.json();
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-  // Simpan ke memori history
-  if (!conversationHistory[userId]) conversationHistory[userId] = [];
-  conversationHistory[userId].push({ role: "user", text: userInput });
-  conversationHistory[userId].push({ role: "bot", text: reply });
-
-  // Batasi history biar ga numpuk
-  if (conversationHistory[userId].length > 10) {
-    conversationHistory[userId] = conversationHistory[userId].slice(-10);
-  }
-
-  return reply;
+  const data = await response.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 /**
- * Endpoint Nightbot
- */
+ * Endpoint tunggal untuk Nightbot
+ */
 app.get("/", async (req, res) => {
-  const userInput = req.query.q;
-  const userId = req.query.user || "global"; // bisa pake nama user Nightbot
+  const userInput = req.query.q;
+  if (!userInput) return res.send("❌ Ketik sesuatu setelah 'Nightbot'");
 
-  if (!userInput) return res.send("❌ Ketik sesuatu setelah 'Nightbot'");
+  try {
+    let reply = await askGemini(userInput);
 
-  try {
-    let reply = await askGemini(userId, userInput);
+    // Kalau terlalu panjang → ringkas
+    if (reply.length > 400) {
+      reply = await askGemini(
+        `Ringkas jawaban berikut jadi 1-4 kalimat yang sesuai dengan jawaban yang diminta:\n\n${reply}`
+      );
+    }
 
-    // Kalau terlalu panjang → ringkas
-    if (reply.length > 400) {
-      reply = await askGemini(
-        userId,
-        `Ringkas jawaban berikut jadi 1-3 kalimat:\n\n${reply}`
-      );
-    }
+    // Bersihkan format aneh
+    reply = reply
+      .replace(/\*\*/g, "")
+      .replace(/`/g, "")
+      .replace(/#+/g, "")
+      .replace(/\n+/g, " ")
+      .trim();
 
-    // Bersihkan format
-    reply = reply
-      .replace(/\*\*/g, "")
-      .replace(/`/g, "")
-      .replace(/#+/g, "")
-      .replace(/\n+/g, " ")
-      .trim();
+    // Tambahkan sentuhan santai
+    reply = reply + " ";
 
-    res.send(reply.substring(0, 400));
-  } catch (err) {
-    res.send("⚠️ Error: " + err.message);
-  }
+    res.send(reply.substring(0, 400));
+  } catch (err) {
+    res.send("⚠️ Error: " + err.message);
+  }
 });
 
 // Jalankan lokal
 app.listen(3000, () => {
-  console.log("✅ Server jalan di http://localhost:3000");
+  console.log("✅ Server jalan di http://localhost:3000");
 });
