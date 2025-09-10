@@ -4,13 +4,8 @@ import fetch from "node-fetch";
 
 const app = express();
 
-// Simpan history obrolan sementara (in-memory)
-let chatHistories = {}; // { username: [ {role, content}, ... ] }
-
-/**
- * Fungsi untuk tanya Gemini
- */
-async function askGemini(messages) {
+// ===== GEMINI =====
+async function askGemini(userInput) {
   const url =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
     process.env.GEMINI_API_KEY;
@@ -18,7 +13,20 @@ async function askGemini(messages) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: messages })
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Kamu adalah chatbot ramah di live chat YouTube.
+Jawablah singkat, santai, informatif, sedikit humor, maksimal 2 kalimat.
+Input user: ${userInput}`
+            }
+          ]
+        }
+      ]
+    })
   });
 
   if (!response.ok) {
@@ -27,73 +35,70 @@ async function askGemini(messages) {
   }
 
   const data = await response.json();
-
-  let reply =
+  return (
     data?.candidates?.[0]?.content?.parts?.[0]?.text ||
     data?.candidates?.[0]?.output ||
-    "";
-
-  return reply.trim();
+    ""
+  );
 }
 
-/**
- * Endpoint untuk Nightbot
- */
-app.get("/", async (req, res) => {
-  const userInput = req.query.prompt || req.query.q;
-  // Default "anon" kalau Nightbot nggak ngirim &user
-  const username = req.query.user ? String(req.query.user).toLowerCase() : "anon";
+// ===== GROQ =====
+async function askGroq(userInput) {
+  const url = "https://api.groq.com/openai/v1/chat/completions";
 
-  if (!userInput) {
-    return res.send("❌ Cara pakai: ketik Nightbot <isi chatmu>");
+  const payload = {
+    model: "llama-3.1-8b-instant",
+    messages: [
+      {
+        role: "system",
+        content:
+          "Kamu adalah chatbot ramah untuk live chat YouTube. Jawablah singkat, santai, informatif, dengan sedikit humor, maksimal 2 kalimat."
+      },
+      { role: "user", content: userInput }
+    ],
+    max_tokens: 200,
+    temperature: 0.6
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "<no body>");
+    throw new Error(`Groq API error ${response.status}: ${errText}`);
   }
 
+  const data = await response.json();
+  return (
+    data?.choices?.[0]?.message?.content ||
+    data?.choices?.[0]?.text ||
+    "Maaf, aku bingung 😅"
+  );
+}
+
+// ===== Nightbot Endpoint =====
+app.get("/", async (req, res) => {
+  const userInput = req.query.prompt || req.query.q;
+  if (!userInput) return res.send("❌ Cara pakai: !ai <pertanyaan>");
+
   try {
-    // Inisialisasi history user
-    if (!chatHistories[username]) chatHistories[username] = [];
+    let reply;
 
-    // Tambah pertanyaan user
-    chatHistories[username].push({ role: "user", parts: [{ text: userInput }] });
-
-    // Batasi history biar nggak kebanyakan
-    if (chatHistories[username].length > 10) {
-      chatHistories[username] = chatHistories[username].slice(-10);
+    try {
+      // Coba pakai Gemini dulu
+      reply = await askGemini(userInput);
+    } catch (err) {
+      console.error("Gemini gagal, fallback ke Groq:", err.message);
+      reply = await askGroq(userInput);
     }
 
-    // Tambahkan system prompt + history
-    const messages = [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `Kamu adalah chatbot ramah di live chat YouTube. 
-Jawablah singkat, santai, informatif, dengan sedikit humor kalau bisa. 
-Maksimal 2 kalimat.`
-          }
-        ]
-      },
-      ...chatHistories[username]
-    ];
-
-    let reply = await askGemini(messages);
-
-    if (!reply) reply = "Hmm... aku agak bingung jawabnya 😅";
-
-    // Kalau terlalu panjang → ringkas
-    if (reply.length > 400) {
-      reply = await askGemini([
-        {
-          role: "user",
-          parts: [
-            {
-              text: `Ringkas jawaban berikut jadi 1-2 kalimat singkat untuk live chat:\n\n${reply}`
-            }
-          ]
-        }
-      ]);
-    }
-
-    // Bersihkan format aneh
+    // Bersihkan teks & batasi
     reply = reply
       .replace(/\*\*/g, "")
       .replace(/`/g, "")
@@ -101,11 +106,8 @@ Maksimal 2 kalimat.`
       .replace(/\n+/g, " ")
       .trim();
 
-    // Batasi 400 karakter
-    reply = reply.substring(0, 400);
-
-    // Simpan jawaban ke history
-    chatHistories[username].push({ role: "model", parts: [{ text: reply }] });
+    // Max 400 karakter (batas Nightbot / YouTube)
+    if (reply.length > 400) reply = reply.slice(0, 397) + "...";
 
     res.send(reply);
   } catch (err) {
